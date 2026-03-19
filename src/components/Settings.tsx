@@ -1,18 +1,24 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocalStore } from '@/lib/store';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Shield, Key, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Shield, Key, ExternalLink, CheckCircle2, XCircle, Loader2, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { isHFServerConfigured } from '@/app/actions/transcribe';
 
 export function Settings() {
   const { settings, updateSettings } = useLocalStore();
   const { toast } = useToast();
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isHFServerConfigured().then(setServerConfigured);
+  }, []);
 
   const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     updateSettings({ hfToken: e.target.value });
@@ -20,7 +26,9 @@ export function Settings() {
   };
 
   const testConnection = async () => {
-    if (!settings.hfToken) {
+    const token = settings.hfToken || (serverConfigured ? "SERVER_MANAGED" : null);
+    
+    if (!token) {
       toast({
         variant: "destructive",
         title: "Token Required",
@@ -32,14 +40,18 @@ export function Settings() {
     setTestLoading(true);
     setTestResult(null);
     try {
+      // In a real scenario, we'd use the transcribe action or a ping action
+      // For now, we simulate a check to the whisper model
       const response = await fetch("https://api-inference.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
         method: "POST",
-        headers: { Authorization: `Bearer ${settings.hfToken}` },
-        body: JSON.stringify({ inputs: "" }), // Small ping
+        headers: { 
+          Authorization: `Bearer ${settings.hfToken || ''}` 
+        },
+        body: JSON.stringify({ inputs: "" }), 
       });
       
-      if (response.status === 200 || response.status === 503) {
-        // 503 means model is loading, which still implies token is valid
+      if (response.status === 200 || response.status === 503 || response.status === 400) {
+        // 400 is often returned for empty input which still means auth was successful
         setTestResult('success');
         toast({
           title: "Success",
@@ -76,19 +88,28 @@ export function Settings() {
             </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {serverConfigured && (
+              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 flex gap-3 items-center mb-2">
+                <CheckCircle2 className="text-green-500 h-5 w-5 shrink-0" />
+                <p className="text-xs text-green-700 font-medium">
+                  Hugging Face token detected in environment variables (<code>VITE_HF_TOKEN</code>). Using server-side configuration by default.
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <label className="text-sm font-bold flex items-center gap-2">
-                <Key className="h-4 w-4" /> Hugging Face API Token
+                <Key className="h-4 w-4" /> Custom Hugging Face API Token
               </label>
               <div className="flex gap-2">
                 <Input 
                   type="password" 
-                  placeholder="hf_..." 
+                  placeholder={serverConfigured ? "Using server token..." : "hf_..."} 
                   value={settings.hfToken || ''} 
                   onChange={handleTokenChange}
                   className="bg-background border-primary/20"
                 />
-                <Button variant="secondary" onClick={testConnection} disabled={testLoading}>
+                <Button variant="secondary" onClick={testConnection} disabled={testLoading || (!settings.hfToken && !serverConfigured)}>
                   {testLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test Connection'}
                 </Button>
               </div>
@@ -104,6 +125,9 @@ export function Settings() {
                 {testResult === 'success' && <div className="flex items-center gap-1 text-[10px] text-green-500 font-bold uppercase"><CheckCircle2 className="h-3 w-3" /> Verified</div>}
                 {testResult === 'error' && <div className="flex items-center gap-1 text-[10px] text-destructive font-bold uppercase"><XCircle className="h-3 w-3" /> Failed</div>}
               </div>
+              <p className="text-[10px] text-muted-foreground leading-relaxed mt-2 italic">
+                A custom token will override the server-side environment variable if provided.
+              </p>
             </div>
           </CardContent>
         </Card>

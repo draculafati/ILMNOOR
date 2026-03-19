@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalStore } from '@/lib/store';
 import { bufferToWav, getLevenshteinDistance } from '@/lib/audio-utils';
+import { transcribeAudio, isHFServerConfigured } from '@/app/actions/transcribe';
 
 type ComparisonResult = {
   originalWords: string[];
@@ -32,6 +33,7 @@ export function QuranLearning() {
   const [comparing, setComparing] = useState(false);
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [cooldown, setCooldown] = useState(false);
+  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -41,6 +43,7 @@ export function QuranLearning() {
 
   useEffect(() => {
     fetchSurahs().then(setSurahs);
+    isHFServerConfigured().then(setServerConfigured);
   }, []);
 
   const handleSelectSurah = async (num: number) => {
@@ -63,11 +66,13 @@ export function QuranLearning() {
 
   const startRecording = async (ayah: any) => {
     if (cooldown) return;
-    if (!settings.hfToken) {
+    
+    const isConfigured = serverConfigured || !!settings.hfToken;
+    if (!isConfigured) {
       toast({
         variant: "destructive",
         title: "Configuration Required",
-        description: "Please add your Hugging Face token in Settings to use advanced analysis."
+        description: "Please add your Hugging Face token in Settings or .env file."
       });
       return;
     }
@@ -139,46 +144,52 @@ export function QuranLearning() {
 
       const wavBlob = bufferToWav(resultBuffer);
       
-      const response = await fetch("https://api-inference.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${settings.hfToken}`,
-          "Content-Type": "audio/wav"
-        },
-        body: wavBlob
-      });
+      // Convert Blob to base64 to send to Server Action
+      const reader = new FileReader();
+      reader.readAsDataURL(wavBlob);
+      reader.onloadend = async () => {
+        const base64data = (reader.result as string).split(',')[1];
+        
+        try {
+          const result = await transcribeAudio(base64data, settings.hfToken);
 
-      if (response.status === 503) {
-        toast({
-          title: "Model Warming Up",
-          description: "AI model is warming up, please wait 20 seconds and try again."
-        });
-        throw new Error("Model loading");
-      }
+          if (result.loading) {
+            toast({
+              title: "Model Warming Up",
+              description: "AI model is warming up, please wait 20 seconds and try again."
+            });
+            setComparing(false);
+            return;
+          }
 
-      if (!response.ok) throw new Error("API call failed");
+          if (result.error) throw new Error(result.error);
 
-      const data = await response.json();
-      const transcription = data.text || "";
-      
-      const analysis = analyzeRecitation(ayah.text, transcription);
-      setComparisonResult(analysis);
+          const transcription = result.text || "";
+          const analysis = analyzeRecitation(ayah.text, transcription);
+          setComparisonResult(analysis);
 
-      // Start cooldown
-      setCooldown(true);
-      setTimeout(() => setCooldown(false), 3000);
-
+          // Start cooldown
+          setCooldown(true);
+          setTimeout(() => setCooldown(false), 3000);
+        } catch (err) {
+          console.error(err);
+          toast({
+            variant: "destructive",
+            title: "Analysis Failed",
+            description: "An error occurred during transcription. Please try again."
+          });
+        } finally {
+          setComparing(false);
+        }
+      };
     } catch (err) {
       console.error(err);
+      setComparing(false);
       toast({
         variant: "destructive",
-        title: "Analysis Failed",
-        description: err instanceof Error && err.message === "Model loading" 
-          ? "AI model is warming up. Please try again in a few seconds." 
-          : "Basic comparison mode — check token in Settings."
+        title: "Process Failed",
+        description: "Could not process audio for analysis."
       });
-    } finally {
-      setComparing(false);
     }
   };
 
@@ -186,10 +197,8 @@ export function QuranLearning() {
     const origWords = original.trim().split(/\s+/);
     const userWords = userRecited.trim().split(/\s+/);
     
-    // Simple matching for highlighting
     const matches = origWords.map((word, i) => {
       if (i >= userWords.length) return false;
-      // Rough match (ignoring small differences in pronunciation markers if any)
       return userWords[i].includes(word) || word.includes(userWords[i]);
     });
 
@@ -225,11 +234,11 @@ export function QuranLearning() {
 
         <ScrollArea className="flex-1 px-4 py-6">
           <div className="flex flex-col gap-8 max-w-2xl mx-auto pb-24">
-            {!settings.hfToken && (
+            {!serverConfigured && !settings.hfToken && (
               <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex gap-3 items-center">
                 <AlertCircle className="text-destructive h-5 w-5 shrink-0" />
                 <p className="text-sm text-destructive-foreground">
-                  Hugging Face token missing. Please visit <b>Settings</b> to enable advanced AI analysis.
+                  Hugging Face token missing. Please add it to your <b>.env</b> file as <code>VITE_HF_TOKEN</code> or visit <b>Settings</b>.
                 </p>
               </div>
             )}
