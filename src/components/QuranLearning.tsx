@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,9 +8,7 @@ import { ChevronLeft, Mic, Square, Loader2, Sparkles, AlertCircle, Info } from '
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { useLocalStore } from '@/lib/store';
-import { bufferToWav, getLevenshteinDistance } from '@/lib/audio-utils';
-import { transcribeAudio, isHFServerConfigured } from '@/app/actions/transcribe';
+import { transcribeAudio } from '@/app/actions/transcribe';
 
 type ComparisonResult = {
   originalWords: string[];
@@ -23,7 +20,6 @@ type ComparisonResult = {
 
 export function QuranLearning() {
   const { toast } = useToast();
-  const { settings } = useLocalStore();
   const [surahs, setSurahs] = useState<any[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number | null>(null);
   const [surahData, setSurahData] = useState<any>(null);
@@ -34,17 +30,13 @@ export function QuranLearning() {
   const [comparing, setComparing] = useState(false);
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [cooldown, setCooldown] = useState(false);
-  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const audioChunksRef = useRef<Float32Array[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<any>(null);
 
   useEffect(() => {
     fetchSurahs().then(setSurahs);
-    isHFServerConfigured().then(setServerConfigured);
   }, []);
 
   const handleSelectSurah = async (num: number) => {
@@ -65,41 +57,83 @@ export function QuranLearning() {
     }
   };
 
+  const convertToWav = async (audioBlob: Blob): Promise<Blob> => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    const targetSampleRate = 16000;
+    const offlineCtx = new OfflineAudioContext(
+      1,
+      audioBuffer.duration * targetSampleRate,
+      targetSampleRate
+    );
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start();
+    
+    const resampled = await offlineCtx.startRendering();
+    
+    // Convert to WAV
+    const numSamples = resampled.length;
+    const wavBuffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(wavBuffer);
+    
+    const writeString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // Mono
+    view.setUint32(24, targetSampleRate, true);
+    view.setUint32(28, targetSampleRate * 2, true);
+    view.setUint16(32, 2, true); // Block align
+    view.setUint16(34, 16, true); // Bits per sample
+    writeString(36, 'data');
+    view.setUint32(40, numSamples * 2, true);
+    
+    const channelData = resampled.getChannelData(0);
+    let offset = 44;
+    for (let i = 0; i < numSamples; i++) {
+      const sample = Math.max(-1, Math.min(1, channelData[i]));
+      view.setInt16(offset, sample * 0x7FFF, true);
+      offset += 2;
+    }
+    
+    return new Blob([wavBuffer], { type: 'audio/wav' });
+  };
+
   const startRecording = async (ayah: any) => {
     if (cooldown) return;
     
-    const isConfigured = serverConfigured || !!settings.hfToken;
-    if (!isConfigured) {
-      toast({
-        variant: "destructive",
-        title: "Configuration Required",
-        description: "Please add your Hugging Face token in Settings or .env file."
-      });
-      return;
-    }
-
     setComparisonResult(null);
     audioChunksRef.current = [];
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      audioContextRef.current = audioCtx;
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
-
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioChunksRef.current.push(new Float32Array(inputData));
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        processRecitation(ayah, audioBlob);
+      };
 
+      mediaRecorder.start();
       setIsRecording(true);
       setRecordingAyah(ayah.number);
       setTimer(0);
@@ -114,62 +148,40 @@ export function QuranLearning() {
     }
   };
 
-  const stopRecording = (ayah: any) => {
-    setIsRecording(false);
-    clearInterval(timerRef.current);
-    
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
+      clearInterval(timerRef.current);
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-
-    processRecitation(ayah);
   };
 
-  const processRecitation = async (ayah: any) => {
-    if (!audioContextRef.current) return;
-
+  const processRecitation = async (ayah: any, audioBlob: Blob) => {
     setComparing(true);
     try {
-      // Flatten chunks
-      const totalLength = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.length, 0);
-      const resultBuffer = audioContextRef.current.createBuffer(1, totalLength, 16000);
-      let offset = 0;
-      audioChunksRef.current.forEach(chunk => {
-        resultBuffer.getChannelData(0).set(chunk, offset);
-        offset += chunk.length;
-      });
-
-      const wavBlob = bufferToWav(resultBuffer);
+      // 1. Convert to standardized 16kHz WAV
+      const wavBlob = await convertToWav(audioBlob);
       
-      // Convert Blob to base64 to send to Server Action
+      // 2. Convert Blob to base64
       const reader = new FileReader();
       reader.readAsDataURL(wavBlob);
       reader.onloadend = async () => {
         const base64data = (reader.result as string).split(',')[1];
         
         try {
-          const result = await transcribeAudio(base64data, settings.hfToken);
-
-          if (result.loading) {
-            toast({
-              title: "Model Warming Up",
-              description: "AI model is warming up, please wait 20 seconds and try again."
-            });
-            setComparing(false);
-            return;
-          }
+          // 3. Send to Tarteel AI Space API via Server Action
+          const result = await transcribeAudio(base64data);
 
           if (result.error) throw new Error(result.error);
 
           const transcription = result.text || "";
+          
+          // 4. Compare word by word
           const analysis = analyzeRecitation(ayah.text, transcription);
           setComparisonResult(analysis);
 
-          // Start cooldown
+          // Cooldown to respect rate limits
           setCooldown(true);
           setTimeout(() => setCooldown(false), 3000);
         } catch (err) {
@@ -177,7 +189,7 @@ export function QuranLearning() {
           toast({
             variant: "destructive",
             title: "Analysis Failed",
-            description: "An error occurred during transcription. Please try again."
+            description: "Could not connect to AI Space. Please try again."
           });
         } finally {
           setComparing(false);
@@ -189,22 +201,27 @@ export function QuranLearning() {
       toast({
         variant: "destructive",
         title: "Process Failed",
-        description: "Could not process audio for analysis."
+        description: "Could not format audio for analysis."
       });
     }
   };
 
   const analyzeRecitation = (original: string, userRecited: string): ComparisonResult => {
+    // Normalizing Arabic for comparison (removing harakat/diacritics)
+    const normalize = (str: string) => {
+      return str.replace(/[\u064B-\u065F]/g, "").replace(/\s+/g, " ").trim();
+    };
+
     const origWords = original.trim().split(/\s+/);
     const userWords = userRecited.trim().split(/\s+/);
     
     const matches = origWords.map((word, i) => {
       if (i >= userWords.length) return false;
-      return userWords[i].includes(word) || word.includes(userWords[i]);
+      return normalize(word) === normalize(userWords[i]);
     });
 
-    const editDistance = getLevenshteinDistance(original, userRecited);
-    const score = Math.max(0, Math.min(100, Math.round((1 - editDistance / original.length) * 100)));
+    const correctCount = matches.filter(Boolean).length;
+    const score = Math.round((correctCount / origWords.length) * 100);
 
     return {
       originalWords: origWords,
@@ -235,15 +252,6 @@ export function QuranLearning() {
 
         <ScrollArea className="flex-1 px-4 py-6">
           <div className="flex flex-col gap-8 max-w-2xl mx-auto pb-24">
-            {!serverConfigured && !settings.hfToken && (
-              <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex gap-3 items-center">
-                <AlertCircle className="text-destructive h-5 w-5 shrink-0" />
-                <p className="text-sm text-destructive-foreground">
-                  Hugging Face token missing. Please add it to your <b>.env</b> file as <code>VITE_HF_TOKEN</code> or visit <b>Settings</b>.
-                </p>
-              </div>
-            )}
-
             {arabic.ayahs.map((ayah: any) => (
               <div key={ayah.number} className="flex flex-col gap-6 p-6 rounded-2xl border border-primary/20 bg-primary/5 transition-all hover:border-primary/40">
                 <div className="flex justify-between items-center">
@@ -281,14 +289,14 @@ export function QuranLearning() {
                     </Button>
                   ) : (
                     recordingAyah === ayah.number && (
-                      <Button variant="destructive" onClick={() => stopRecording(ayah)} className="gap-2 rounded-full px-6 h-12 shadow-lg">
+                      <Button variant="destructive" onClick={stopRecording} className="gap-2 rounded-full px-6 h-12 shadow-lg">
                         <Square className="h-4 w-4" /> Stop Recording
                       </Button>
                     )
                   )}
                   {comparing && recordingAyah === ayah.number && (
                     <div className="flex items-center gap-2 text-primary font-bold animate-pulse px-4">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Analyzing your Tajweed...
+                      <Loader2 className="h-4 w-4 animate-spin" /> Tarteel AI Analyzing...
                     </div>
                   )}
                 </div>
@@ -312,7 +320,7 @@ export function QuranLearning() {
         </ScrollArea>
         
         <div className="p-3 bg-secondary/10 border-t flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest justify-center">
-          <Info className="h-3 w-3" /> Hugging Face Whisper-Base-AR-Quran
+          <Info className="h-3 w-3" /> Powered by Tarteel AI Whisper Space
         </div>
       </div>
     );
