@@ -350,10 +350,6 @@ export function QuranLearning() {
             ))}
           </div>
         </ScrollArea>
-        
-        <div className="p-3 bg-secondary/10 border-t flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest justify-center">
-          <Info className="h-3 w-3" /> Powered by Tarteel AI Whisper Space
-        </div>
       </div>
     );
   }
