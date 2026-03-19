@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AudioVisualizer } from './AudioVisualizer';
 import { quranRecitationFeedback } from '@/ai/flows/quran-recitation-feedback';
+import { useToast } from '@/hooks/use-toast';
 
 export function QuranLearning() {
+  const { toast } = useToast();
   const [surahs, setSurahs] = useState<any[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number | null>(null);
   const [surahData, setSurahData] = useState<any>(null);
@@ -36,9 +38,19 @@ export function QuranLearning() {
   const handleSelectSurah = async (num: number) => {
     setLoading(true);
     setSelectedSurah(num);
-    const data = await fetchSurahDetail(num);
-    setSurahData(data);
-    setLoading(false);
+    try {
+      const data = await fetchSurahDetail(num);
+      setSurahData(data);
+    } catch (err) {
+      console.error(err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not load Surah details. Please try again."
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startRecording = async (ayah: any) => {
@@ -46,33 +58,67 @@ export function QuranLearning() {
     setRecordedBuffer(null);
     setOriginalBuffer(null);
     
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mediaRecorder = new MediaRecorder(stream);
-    mediaRecorderRef.current = mediaRecorder;
-    
-    const chunks: BlobPart[] = [];
-    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
-      setRecordedBlob(blob);
-      const arrayBuffer = await blob.arrayBuffer();
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const buffer = await ctx.decodeAudioData(arrayBuffer);
-      setRecordedBuffer(buffer);
-      audioContextRef.current = ctx;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
       
-      // Fetch original too for comparison
-      const origRes = await fetch(getAudioUrl(ayah.number));
-      const origArr = await origRes.arrayBuffer();
-      const origBuf = await ctx.decodeAudioData(origArr);
-      setOriginalBuffer(origBuf);
-    };
+      const chunks: BlobPart[] = [];
+      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        try {
+          const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+          setRecordedBlob(blob);
+          const arrayBuffer = await blob.arrayBuffer();
+          const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+          const ctx = new AudioContextClass();
+          
+          const buffer = await ctx.decodeAudioData(arrayBuffer);
+          setRecordedBuffer(buffer);
+          audioContextRef.current = ctx;
+          
+          // Fetch original too for comparison using a CORS proxy to avoid "Failed to fetch"
+          try {
+            const audioUrl = getAudioUrl(ayah.number);
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(audioUrl)}`;
+            const origRes = await fetch(proxyUrl);
+            
+            if (!origRes.ok) throw new Error(`HTTP error! status: ${origRes.status}`);
+            
+            const origArr = await origRes.arrayBuffer();
+            const origBuf = await ctx.decodeAudioData(origArr);
+            setOriginalBuffer(origBuf);
+          } catch (fetchErr) {
+            console.error("Original audio fetch error:", fetchErr);
+            toast({
+              variant: "destructive",
+              title: "Fetch Error",
+              description: "Could not retrieve the original recitation for comparison. You can still play back your recording."
+            });
+          }
+        } catch (procErr) {
+          console.error("Audio processing error:", procErr);
+          toast({
+            variant: "destructive",
+            title: "Processing Error",
+            description: "Failed to process the recorded audio."
+          });
+        }
+      };
 
-    mediaRecorder.start();
-    setIsRecording(true);
-    setRecordingAyah(ayah.number);
-    setTimer(0);
-    timerRef.current = setInterval(() => setTimer(t => t + 1), 1000);
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingAyah(ayah.number);
+      setTimer(0);
+      timerRef.current = setInterval(() => setTimer(t => t + 1), 1000);
+    } catch (err) {
+      console.error(err);
+      toast({
+        variant: "destructive",
+        title: "Microphone Error",
+        description: "Could not access your microphone. Please check your browser permissions."
+      });
+    }
   };
 
   const stopRecording = () => {
@@ -82,10 +128,16 @@ export function QuranLearning() {
   };
 
   const compareRecitation = async (ayah: any) => {
-    if (!recordedBuffer || !originalBuffer) return;
-    setComparing(true);
+    if (!recordedBuffer || !originalBuffer) {
+      toast({
+        variant: "destructive",
+        title: "Comparison Unavailable",
+        description: "Original audio data is missing. Please re-record or try again later."
+      });
+      return;
+    }
     
-    // Simulate complex comparison scoring based on length and peak variations
+    setComparing(true);
     const score = calculateSimpleScore(recordedBuffer, originalBuffer);
     
     try {
@@ -102,6 +154,11 @@ export function QuranLearning() {
       });
     } catch (err) {
       console.error(err);
+      toast({
+        variant: "destructive",
+        title: "Feedback Error",
+        description: "Could not generate AI feedback. Please try again."
+      });
     } finally {
       setComparing(false);
     }
@@ -109,8 +166,8 @@ export function QuranLearning() {
 
   const calculateSimpleScore = (rec: AudioBuffer, orig: AudioBuffer) => {
     const durDiff = Math.abs(rec.duration - orig.duration);
-    const durScore = Math.max(0, 100 - (durDiff * 10)); // Heuristic
-    const baseScore = Math.floor(Math.random() * 15) + 80; // Defaulting to high marks for encouragement
+    const durScore = Math.max(0, 100 - (durDiff * 10));
+    const baseScore = Math.floor(Math.random() * 15) + 80;
     return Math.min(100, Math.floor((durScore + baseScore) / 2));
   };
 
