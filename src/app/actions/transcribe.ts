@@ -27,6 +27,10 @@ export async function transcribeAudio(audioBase64: string) {
       }
     );
 
+    if (response.status === 503) {
+      return { error: "503: AI Service is currently warming up or sleeping. Please try again in 30 seconds." };
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       return { error: `Space API Error: ${response.status} - ${errorText}` };

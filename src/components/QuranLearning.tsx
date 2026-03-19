@@ -4,11 +4,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { fetchSurahs, fetchSurahDetail } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Mic, Square, Loader2, Sparkles, AlertCircle, Info } from 'lucide-react';
+import { ChevronLeft, Mic, Square, Loader2, Sparkles, AlertCircle, Info, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { transcribeAudio } from '@/app/actions/transcribe';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 type ComparisonResult = {
   originalWords: string[];
@@ -30,6 +31,7 @@ export function QuranLearning() {
   const [comparing, setComparing] = useState(false);
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [cooldown, setCooldown] = useState(false);
+  const [apiStatus, setApiStatus] = useState<'online' | 'error' | 'warmup'>('online');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -159,37 +161,48 @@ export function QuranLearning() {
 
   const processRecitation = async (ayah: any, audioBlob: Blob) => {
     setComparing(true);
+    setApiStatus('online');
     try {
-      // 1. Convert to standardized 16kHz WAV
       const wavBlob = await convertToWav(audioBlob);
-      
-      // 2. Convert Blob to base64
       const reader = new FileReader();
       reader.readAsDataURL(wavBlob);
       reader.onloadend = async () => {
         const base64data = (reader.result as string).split(',')[1];
         
         try {
-          // 3. Send to Tarteel AI Space API via Server Action
           const result = await transcribeAudio(base64data);
 
-          if (result.error) throw new Error(result.error);
+          if (result.error) {
+            if (result.error.includes("503")) {
+              setApiStatus('warmup');
+              toast({
+                title: "AI Service Warming Up",
+                description: "The AI model is booting up. Please wait 30 seconds and try again.",
+              });
+            } else {
+              setApiStatus('error');
+              toast({
+                variant: "destructive",
+                title: "Analysis Failed",
+                description: result.error
+              });
+            }
+            return;
+          }
 
           const transcription = result.text || "";
-          
-          // 4. Compare word by word
           const analysis = analyzeRecitation(ayah.text, transcription);
           setComparisonResult(analysis);
 
-          // Cooldown to respect rate limits
           setCooldown(true);
           setTimeout(() => setCooldown(false), 3000);
         } catch (err) {
           console.error(err);
+          setApiStatus('error');
           toast({
             variant: "destructive",
             title: "Analysis Failed",
-            description: "Could not connect to AI Space. Please try again."
+            description: "An unexpected error occurred during transcription."
           });
         } finally {
           setComparing(false);
@@ -207,7 +220,6 @@ export function QuranLearning() {
   };
 
   const analyzeRecitation = (original: string, userRecited: string): ComparisonResult => {
-    // Normalizing Arabic for comparison (removing harakat/diacritics)
     const normalize = (str: string) => {
       return str.replace(/[\u064B-\u065F]/g, "").replace(/\s+/g, " ").trim();
     };
@@ -252,6 +264,26 @@ export function QuranLearning() {
 
         <ScrollArea className="flex-1 px-4 py-6">
           <div className="flex flex-col gap-8 max-w-2xl mx-auto pb-24">
+            {apiStatus === 'warmup' && (
+              <Alert className="bg-primary/20 border-primary/30 text-primary">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <AlertTitle>AI Model Warming Up</AlertTitle>
+                <AlertDescription>
+                  The Tarteel AI model is currently initializing on Hugging Face. This can take about 30-60 seconds after a period of inactivity. Please try again shortly.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {apiStatus === 'error' && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>AI Service Unavailable</AlertTitle>
+                <AlertDescription>
+                  The transcription service is currently down or experiencing an error. Please check your internet connection or try again later.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {arabic.ayahs.map((ayah: any) => (
               <div key={ayah.number} className="flex flex-col gap-6 p-6 rounded-2xl border border-primary/20 bg-primary/5 transition-all hover:border-primary/40">
                 <div className="flex justify-between items-center">
