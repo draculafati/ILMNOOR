@@ -16,7 +16,8 @@ export async function transcribeAudio(audioBase64: string, clientToken?: string)
   try {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
 
-    const response = await fetch("https://api-inference.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
+    // Updated URL from api-inference.huggingface.co to router.huggingface.co as per HF deprecation notice
+    const response = await fetch("https://router.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,

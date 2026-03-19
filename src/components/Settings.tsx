@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -6,7 +5,7 @@ import { useLocalStore } from '@/lib/store';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Shield, Key, ExternalLink, CheckCircle2, XCircle, Loader2, Info } from 'lucide-react';
+import { Shield, Key, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isHFServerConfigured } from '@/app/actions/transcribe';
 
@@ -29,7 +28,7 @@ export function Settings() {
   const testConnection = async () => {
     const token = settings.hfToken || (serverConfigured ? "SERVER_MANAGED" : null);
     
-    if (!token) {
+    if (!token && !serverConfigured) {
       toast({
         variant: "destructive",
         title: "Token Required",
@@ -41,9 +40,8 @@ export function Settings() {
     setTestLoading(true);
     setTestResult(null);
     try {
-      // In a real scenario, we'd use the transcribe action or a ping action
-      // For now, we simulate a check to the whisper model
-      const response = await fetch("https://api-inference.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
+      // Updated URL from api-inference.huggingface.co to router.huggingface.co
+      const response = await fetch("https://router.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
         method: "POST",
         headers: { 
           Authorization: `Bearer ${settings.hfToken || ''}` 
