@@ -6,7 +6,7 @@ import { QuranReader } from '@/components/QuranReader';
 import { QuranLearning } from '@/components/QuranLearning';
 import { DuaNotepad } from '@/components/DuaNotepad';
 import { PrayerTimes } from '@/components/PrayerTimes';
-import { IslamicCalendar } from '@/components/IslamicCalendar';
+import { Settings } from '@/components/Settings';
 import { Navigation, NavItem } from '@/components/Navigation';
 
 export default function Home() {
@@ -28,7 +28,7 @@ export default function Home() {
       case 'learning': return <QuranLearning />;
       case 'duas': return <DuaNotepad />;
       case 'prayer': return <PrayerTimes />;
-      case 'calendar': return <IslamicCalendar />;
+      case 'settings': return <Settings />;
       default: return <Dashboard onNavigate={(s) => setActiveSection(s as NavItem)} />;
     }
   };

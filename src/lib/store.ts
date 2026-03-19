@@ -29,6 +29,7 @@ export type AppSettings = {
     lng: number;
     city?: string;
   };
+  hfToken?: string;
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -57,7 +58,9 @@ export function useLocalStore() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('ilmnoor_settings');
-      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+      const hfToken = localStorage.getItem('hf_token');
+      const parsed = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+      return { ...parsed, hfToken: hfToken || '' };
     }
     return DEFAULT_SETTINGS;
   });
@@ -72,6 +75,9 @@ export function useLocalStore() {
 
   useEffect(() => {
     localStorage.setItem('ilmnoor_settings', JSON.stringify(settings));
+    if (settings.hfToken !== undefined) {
+      localStorage.setItem('hf_token', settings.hfToken);
+    }
   }, [settings]);
 
   const updateSurahStatus = (num: number, status: QuranProgress[number]) => {

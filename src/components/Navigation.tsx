@@ -1,9 +1,9 @@
 "use client";
 
 import React from 'react';
-import { Home, BookOpen, Mic, PenTool, Clock, Calendar } from 'lucide-react';
+import { Home, BookOpen, Mic, PenTool, Clock, Settings } from 'lucide-react';
 
-export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'calendar';
+export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'settings';
 
 export function Navigation({ active, onNavigate }: { active: NavItem, onNavigate: (nav: NavItem) => void }) {
   const items: { id: NavItem, icon: React.ReactNode, label: string }[] = [
@@ -12,7 +12,7 @@ export function Navigation({ active, onNavigate }: { active: NavItem, onNavigate
     { id: 'learning', icon: <Mic />, label: 'Learn' },
     { id: 'duas', icon: <PenTool />, label: 'Duas' },
     { id: 'prayer', icon: <Clock />, label: 'Pray' },
-    { id: 'calendar', icon: <Calendar />, label: 'Date' },
+    { id: 'settings', icon: <Settings />, label: 'Sets' },
   ];
 
   return (

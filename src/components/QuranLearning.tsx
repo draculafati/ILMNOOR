@@ -1,18 +1,27 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchSurahs, fetchSurahDetail, getAudioUrl } from '@/lib/api';
+import { fetchSurahs, fetchSurahDetail } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Mic, Square, Play, BarChart2, Loader2, Sparkles } from 'lucide-react';
+import { ChevronLeft, Mic, Square, Loader2, Sparkles, AlertCircle, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AudioVisualizer } from './AudioVisualizer';
-import { quranRecitationFeedback } from '@/ai/flows/quran-recitation-feedback';
 import { useToast } from '@/hooks/use-toast';
+import { useLocalStore } from '@/lib/store';
+import { bufferToWav, getLevenshteinDistance } from '@/lib/audio-utils';
+
+type ComparisonResult = {
+  originalWords: string[];
+  userWords: string[];
+  matches: boolean[];
+  score: number;
+  transcription: string;
+};
 
 export function QuranLearning() {
   const { toast } = useToast();
+  const { settings } = useLocalStore();
   const [surahs, setSurahs] = useState<any[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number | null>(null);
   const [surahData, setSurahData] = useState<any>(null);
@@ -20,15 +29,14 @@ export function QuranLearning() {
   const [recordingAyah, setRecordingAyah] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [timer, setTimer] = useState(0);
-  const [feedback, setFeedback] = useState<{ score: number, message: string, detail: string } | null>(null);
   const [comparing, setComparing] = useState(false);
-  
-  const [originalBuffer, setOriginalBuffer] = useState<AudioBuffer | null>(null);
-  const [recordedBuffer, setRecordedBuffer] = useState<AudioBuffer | null>(null);
-  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [cooldown, setCooldown] = useState(false);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioChunksRef = useRef<Float32Array[]>([]);
   const timerRef = useRef<any>(null);
 
   useEffect(() => {
@@ -54,59 +62,38 @@ export function QuranLearning() {
   };
 
   const startRecording = async (ayah: any) => {
-    setFeedback(null);
-    setRecordedBuffer(null);
-    setOriginalBuffer(null);
-    
+    if (cooldown) return;
+    if (!settings.hfToken) {
+      toast({
+        variant: "destructive",
+        title: "Configuration Required",
+        description: "Please add your Hugging Face token in Settings to use advanced analysis."
+      });
+      return;
+    }
+
+    setComparisonResult(null);
+    audioChunksRef.current = [];
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      streamRef.current = stream;
       
-      const chunks: BlobPart[] = [];
-      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-      mediaRecorder.onstop = async () => {
-        try {
-          const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
-          setRecordedBlob(blob);
-          const arrayBuffer = await blob.arrayBuffer();
-          const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
-          const ctx = new AudioContextClass();
-          
-          const buffer = await ctx.decodeAudioData(arrayBuffer);
-          setRecordedBuffer(buffer);
-          audioContextRef.current = ctx;
-          
-          // Fetch original too for comparison using a CORS proxy to avoid "Failed to fetch"
-          try {
-            const audioUrl = getAudioUrl(ayah.number);
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(audioUrl)}`;
-            const origRes = await fetch(proxyUrl);
-            
-            if (!origRes.ok) throw new Error(`HTTP error! status: ${origRes.status}`);
-            
-            const origArr = await origRes.arrayBuffer();
-            const origBuf = await ctx.decodeAudioData(origArr);
-            setOriginalBuffer(origBuf);
-          } catch (fetchErr) {
-            console.error("Original audio fetch error:", fetchErr);
-            toast({
-              variant: "destructive",
-              title: "Fetch Error",
-              description: "Could not retrieve the original recitation for comparison. You can still play back your recording."
-            });
-          }
-        } catch (procErr) {
-          console.error("Audio processing error:", procErr);
-          toast({
-            variant: "destructive",
-            title: "Processing Error",
-            description: "Failed to process the recorded audio."
-          });
-        }
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        audioChunksRef.current.push(new Float32Array(inputData));
       };
 
-      mediaRecorder.start();
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
       setIsRecording(true);
       setRecordingAyah(ayah.number);
       setTimer(0);
@@ -116,66 +103,120 @@ export function QuranLearning() {
       toast({
         variant: "destructive",
         title: "Microphone Error",
-        description: "Could not access your microphone. Please check your browser permissions."
+        description: "Could not access microphone. Please check permissions."
       });
     }
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
+  const stopRecording = (ayah: any) => {
     setIsRecording(false);
     clearInterval(timerRef.current);
+    
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+
+    processRecitation(ayah);
   };
 
-  const compareRecitation = async (ayah: any) => {
-    if (!recordedBuffer || !originalBuffer) {
-      toast({
-        variant: "destructive",
-        title: "Comparison Unavailable",
-        description: "Original audio data is missing. Please re-record or try again later."
-      });
-      return;
-    }
-    
+  const processRecitation = async (ayah: any) => {
+    if (!audioContextRef.current) return;
+
     setComparing(true);
-    const score = calculateSimpleScore(recordedBuffer, originalBuffer);
-    
     try {
-      const aiFeedback = await quranRecitationFeedback({
-        ayahText: ayah.text,
-        score: score,
-        userObservations: `Recitation duration was ${recordedBuffer.duration.toFixed(2)}s compared to original ${originalBuffer.duration.toFixed(2)}s.`
+      // Flatten chunks
+      const totalLength = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.length, 0);
+      const resultBuffer = audioContextRef.current.createBuffer(1, totalLength, 16000);
+      let offset = 0;
+      audioChunksRef.current.forEach(chunk => {
+        resultBuffer.getChannelData(0).set(chunk, offset);
+        offset += chunk.length;
       });
 
-      setFeedback({
-        score,
-        message: aiFeedback.scoreCategoryMessage,
-        detail: aiFeedback.detailedFeedback
+      const wavBlob = bufferToWav(resultBuffer);
+      
+      const response = await fetch("https://api-inference.huggingface.co/models/tarteel-ai/whisper-base-ar-quran", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${settings.hfToken}`,
+          "Content-Type": "audio/wav"
+        },
+        body: wavBlob
       });
+
+      if (response.status === 503) {
+        toast({
+          title: "Model Warming Up",
+          description: "AI model is warming up, please wait 20 seconds and try again."
+        });
+        throw new Error("Model loading");
+      }
+
+      if (!response.ok) throw new Error("API call failed");
+
+      const data = await response.json();
+      const transcription = data.text || "";
+      
+      const analysis = analyzeRecitation(ayah.text, transcription);
+      setComparisonResult(analysis);
+
+      // Start cooldown
+      setCooldown(true);
+      setTimeout(() => setCooldown(false), 3000);
+
     } catch (err) {
       console.error(err);
       toast({
         variant: "destructive",
-        title: "Feedback Error",
-        description: "Could not generate AI feedback. Please try again."
+        title: "Analysis Failed",
+        description: err instanceof Error && err.message === "Model loading" 
+          ? "AI model is warming up. Please try again in a few seconds." 
+          : "Basic comparison mode — check token in Settings."
       });
     } finally {
       setComparing(false);
     }
   };
 
-  const calculateSimpleScore = (rec: AudioBuffer, orig: AudioBuffer) => {
-    const durDiff = Math.abs(rec.duration - orig.duration);
-    const durScore = Math.max(0, 100 - (durDiff * 10));
-    const baseScore = Math.floor(Math.random() * 15) + 80;
-    return Math.min(100, Math.floor((durScore + baseScore) / 2));
+  const analyzeRecitation = (original: string, userRecited: string): ComparisonResult => {
+    const origWords = original.trim().split(/\s+/);
+    const userWords = userRecited.trim().split(/\s+/);
+    
+    // Simple matching for highlighting
+    const matches = origWords.map((word, i) => {
+      if (i >= userWords.length) return false;
+      // Rough match (ignoring small differences in pronunciation markers if any)
+      return userWords[i].includes(word) || word.includes(userWords[i]);
+    });
+
+    const editDistance = getLevenshteinDistance(original, userRecited);
+    const score = Math.max(0, Math.min(100, Math.round((1 - editDistance / original.length) * 100)));
+
+    return {
+      originalWords: origWords,
+      userWords,
+      matches,
+      score,
+      transcription: userRecited
+    };
+  };
+
+  const getFeedbackMessage = (score: number) => {
+    if (score >= 90) return "ماشاءاللہ! Perfect recitation! 🌟";
+    if (score >= 70) return "Very good! Keep practicing! ✨";
+    if (score >= 50) return "Good effort! Try again 💪";
+    return "Keep going, practice makes perfect! 🤲";
   };
 
   if (selectedSurah && surahData) {
     const arabic = surahData[0];
     return (
       <div className="flex flex-col h-full bg-background animate-in slide-in-from-bottom duration-500">
-        <header className="p-4 border-b flex items-center gap-3">
+        <header className="p-4 border-b flex items-center gap-3 bg-background/80 backdrop-blur-md sticky top-0 z-20">
           <Button variant="ghost" size="icon" onClick={() => setSelectedSurah(null)}>
             <ChevronLeft />
           </Button>
@@ -184,61 +225,85 @@ export function QuranLearning() {
 
         <ScrollArea className="flex-1 px-4 py-6">
           <div className="flex flex-col gap-8 max-w-2xl mx-auto pb-24">
+            {!settings.hfToken && (
+              <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex gap-3 items-center">
+                <AlertCircle className="text-destructive h-5 w-5 shrink-0" />
+                <p className="text-sm text-destructive-foreground">
+                  Hugging Face token missing. Please visit <b>Settings</b> to enable advanced AI analysis.
+                </p>
+              </div>
+            )}
+
             {arabic.ayahs.map((ayah: any) => (
-              <div key={ayah.number} className="flex flex-col gap-6 p-6 rounded-xl border border-primary/20 bg-primary/5">
+              <div key={ayah.number} className="flex flex-col gap-6 p-6 rounded-2xl border border-primary/20 bg-primary/5 transition-all hover:border-primary/40">
                 <div className="flex justify-between items-center">
-                  <Badge variant="secondary">Ayah {ayah.numberInSurah}</Badge>
+                  <Badge variant="secondary" className="bg-primary/20 text-primary hover:bg-primary/30">Ayah {ayah.numberInSurah}</Badge>
                   {isRecording && recordingAyah === ayah.number ? (
                     <div className="flex items-center gap-2 text-red-500 font-mono font-bold animate-pulse">
-                      <Square className="h-4 w-4 fill-current" /> {timer}s
+                      <div className="w-2 h-2 rounded-full bg-red-500" /> {timer}s
                     </div>
                   ) : null}
                 </div>
 
-                <div className="arabic-text text-3xl text-secondary">{ayah.text}</div>
+                <div className="arabic-text text-4xl text-secondary leading-[1.8] tracking-wide">
+                  {comparisonResult && recordingAyah === ayah.number ? (
+                    <div className="flex flex-wrap flex-row-reverse gap-x-2 justify-start">
+                      {comparisonResult.originalWords.map((word, i) => (
+                        <span 
+                          key={i} 
+                          className={comparisonResult.matches[i] ? 'text-green-500' : 'text-red-400'}
+                        >
+                          {word}
+                        </span>
+                      ))}
+                    </div>
+                  ) : ayah.text}
+                </div>
 
                 <div className="flex flex-wrap gap-2">
                   {!isRecording ? (
-                    <Button onClick={() => startRecording(ayah)} className="gap-2" size="sm">
-                      <Mic className="h-4 w-4" /> Record
+                    <Button 
+                      onClick={() => startRecording(ayah)} 
+                      className="gap-2 rounded-full px-6 h-12 shadow-lg" 
+                      disabled={comparing || cooldown}
+                    >
+                      <Mic className="h-4 w-4" /> Record Recitation
                     </Button>
                   ) : (
                     recordingAyah === ayah.number && (
-                      <Button variant="destructive" onClick={stopRecording} size="sm" className="gap-2">
-                        <Square className="h-4 w-4" /> Stop
+                      <Button variant="destructive" onClick={() => stopRecording(ayah)} className="gap-2 rounded-full px-6 h-12 shadow-lg">
+                        <Square className="h-4 w-4" /> Stop Recording
                       </Button>
                     )
                   )}
-
-                  {recordedBuffer && recordingAyah === ayah.number && (
-                    <Button variant="secondary" onClick={() => compareRecitation(ayah)} disabled={comparing} size="sm" className="gap-2">
-                      {comparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart2 className="h-4 w-4" />}
-                      Compare
-                    </Button>
+                  {comparing && recordingAyah === ayah.number && (
+                    <div className="flex items-center gap-2 text-primary font-bold animate-pulse px-4">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Analyzing your Tajweed...
+                    </div>
                   )}
                 </div>
 
-                {recordingAyah === ayah.number && (originalBuffer || recordedBuffer) && (
-                  <div className="flex flex-col gap-4 mt-2">
-                    {originalBuffer && <AudioVisualizer audioBuffer={originalBuffer} label="Original Recitation" color="#DAD7BF" />}
-                    {recordedBuffer && <AudioVisualizer audioBuffer={recordedBuffer} label="Your Recording" color="#D4AF37" />}
-                  </div>
-                )}
-
-                {feedback && recordingAyah === ayah.number && (
-                  <div className="mt-4 p-4 rounded-lg bg-primary/10 border border-primary/30 animate-in zoom-in-95 duration-300">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Sparkles className="text-primary h-5 w-5" />
-                      <span className="font-bold text-lg text-primary">{feedback.score}/100</span>
-                      <span className="text-sm font-semibold">{feedback.message}</span>
+                {comparisonResult && recordingAyah === ayah.number && (
+                  <div className="mt-4 p-5 rounded-xl bg-primary/10 border border-primary/30 animate-in zoom-in-95 duration-300">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="text-primary h-6 w-6" />
+                        <span className="font-bold text-2xl text-primary">{comparisonResult.score}%</span>
+                        <span className="text-sm font-semibold ml-2">{getFeedbackMessage(comparisonResult.score)}</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground italic">{feedback.detail}</p>
+                    <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">AI Transcription</div>
+                    <p className="text-sm text-foreground/80 arabic-text text-right" dir="rtl">{comparisonResult.transcription || "..."}</p>
                   </div>
                 )}
               </div>
             ))}
           </div>
         </ScrollArea>
+        
+        <div className="p-3 bg-secondary/10 border-t flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest justify-center">
+          <Info className="h-3 w-3" /> Hugging Face Whisper-Base-AR-Quran
+        </div>
       </div>
     );
   }
@@ -247,14 +312,19 @@ export function QuranLearning() {
     <div className="p-4 max-w-4xl mx-auto pb-24">
       <header className="flex flex-col gap-1 py-4">
         <h2 className="text-3xl font-headline font-bold text-primary">Quran Learning</h2>
-        <p className="text-muted-foreground">Master Tajweed through comparison</p>
+        <p className="text-muted-foreground">Master Tajweed with AI-powered feedback</p>
       </header>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
         {surahs.map(s => (
-          <Card key={s.number} className="hover:border-primary/50 cursor-pointer bg-primary/5" onClick={() => handleSelectSurah(s.number)}>
+          <Card key={s.number} className="group hover:border-primary/50 cursor-pointer bg-primary/5 transition-all" onClick={() => handleSelectSurah(s.number)}>
             <CardContent className="p-4 flex items-center justify-between">
-              <span className="font-bold">{s.number}. {s.englishName}</span>
-              <span className="arabic-text text-primary">{s.name}</span>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+                  {s.number}
+                </div>
+                <span className="font-bold">{s.englishName}</span>
+              </div>
+              <span className="arabic-text text-primary text-lg">{s.name}</span>
             </CardContent>
           </Card>
         ))}
