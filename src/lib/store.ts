@@ -4,13 +4,17 @@
 import { useState, useEffect } from 'react';
 
 export type QuranProgress = {
-  [surahNumber: number]: 'Not Started' | 'Learning' | 'Completed';
+  [surahNumber: number]: 'Not Started' | 'In Progress' | 'Completed' | 'Bookmarked';
 };
 
 export type Dua = {
   id: string;
   title: string;
-  text: string;
+  text?: string;
+  arabic?: string;
+  transliteration?: string;
+  translation?: string;
+  reference?: string;
   date: string;
   isFavorite: boolean;
 };
@@ -118,9 +122,12 @@ export function useLocalStore() {
     }));
   };
 
+  const completedCount = Object.values(progress).filter(s => s === 'Completed').length;
+  const inProgressCount = Object.values(progress).filter(s => s === 'In Progress' || (s as any) === 'Learning').length;
+  const bookmarkedCount = Object.values(progress).filter(s => s === 'Bookmarked').length;
   const completionPercentage = Math.round(
-    (Object.values(progress).filter(s => s === 'Completed').length / 114) * 100
-  );
+    (completedCount / 114) * 100
+  ) || 0;
 
   return {
     progress,
@@ -133,6 +140,9 @@ export function useLocalStore() {
     settings,
     updateSettings,
     toggleAlarm,
-    completionPercentage
+    completionPercentage,
+    completedCount,
+    inProgressCount,
+    bookmarkedCount
   };
 }

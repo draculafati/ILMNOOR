@@ -4,26 +4,47 @@
 
 @layer base {
   :root {
-    --background: 141 48% 20%; /* #1A472A */
-    --foreground: 70 20% 85%; /* Soft cream variation for lighter text on dark */
-    --card: 141 48% 15%;
-    --card-foreground: 70 20% 85%;
-    --popover: 141 48% 15%;
-    --popover-foreground: 70 20% 85%;
-    --primary: 45 69% 52%; /* #D4AF37 Gold */
-    --primary-foreground: 141 48% 10%;
-    --secondary: 70 20% 75%; /* #DAD7BF Cream */
-    --secondary-foreground: 141 48% 20%;
-    --muted: 141 30% 25%;
-    --muted-foreground: 70 10% 60%;
-    --accent: 45 69% 52%;
-    --accent-foreground: 141 48% 10%;
+    --background: 204 100% 97%;
+    --foreground: 226 71% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 226 71% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 226 71% 11%;
+    --primary: 199 89% 48%; /* #0ea5e9 Sky 500 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 204 86% 93%;
+    --secondary-foreground: 200 98% 39%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 199 89% 48%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 141 30% 30%;
-    --input: 141 30% 30%;
-    --ring: 45 69% 52%;
-    --radius: 0.75rem;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 199 89% 48%;
+    --radius: 1rem;
+  }
+  .dark {
+    --background: 226 71% 11%; /* #08123A */
+    --foreground: 210 40% 98%;
+    --card: 226 50% 16%;
+    --card-foreground: 210 40% 98%;
+    --popover: 226 71% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 60%; /* #38bdf8 Sky 400 */
+    --primary-foreground: 226 71% 11%;
+    --secondary: 226 50% 25%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 226 40% 22%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 199 89% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 226 40% 25%;
+    --input: 226 40% 25%;
+    --ring: 199 89% 60%;
   }
 }
 
@@ -32,7 +53,14 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-body;
+    @apply text-foreground transition-colors duration-500 min-h-screen bg-background;
+  }
+  .dark body {
+    background-image: 
+      radial-gradient(circle at top, #1e3a8a 0%, transparent 60%),
+      radial-gradient(circle at bottom right, #0ea5e9 0%, transparent 40%);
+    background-color: hsl(var(--background));
+    background-attachment: fixed;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-headline;
@@ -43,16 +71,43 @@
   }
 }
 
-/* Custom scrollbar for a clean look */
-::-webkit-scrollbar {
-  width: 6px;
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
+::-webkit-scrollbar-thumb { @apply bg-primary/30 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-primary/50; }
+
+.glass-card {
+  background: hsl(var(--card) / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--primary) / 0.1);
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
 }
-::-webkit-scrollbar-track {
-  @apply bg-background;
+
+.dark .glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
 }
-::-webkit-scrollbar-thumb {
-  @apply bg-primary/30 rounded-full;
+
+.glass-card:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 12px 40px 0 hsl(var(--primary) / 0.15);
+  border-color: hsl(var(--primary) / 0.3);
 }
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-primary/50;
+
+.text-glow {
+  text-shadow: 0 0 15px hsl(var(--primary) / 0.2);
+}
+.dark .text-glow {
+  text-shadow: 0 0 15px hsl(var(--primary) / 0.6);
+}
+
+.ayah-bar {
+  @apply flex items-center justify-between rounded-full p-2 pr-4 mb-4 border border-border/50 bg-secondary/30;
+}
+.dark .ayah-bar {
+  @apply bg-[#0f172a]/60 border-white/5;
 }

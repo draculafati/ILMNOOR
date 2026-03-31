@@ -1,17 +1,18 @@
 "use client";
 
 import React from 'react';
-import { Home, BookOpen, Mic, PenTool, Clock, Settings } from 'lucide-react';
+import { Home, BookOpen, Mic, PenTool, Clock, Settings, BookText } from 'lucide-react';
 
-export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'settings';
+export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'hadith' | 'settings';
 
 export function Navigation({ active, onNavigate }: { active: NavItem, onNavigate: (nav: NavItem) => void }) {
-  const items: { id: NavItem, icon: React.ReactNode, label: string }[] = [
+  const items: { id: NavItem, icon: React.ReactElement<{ className?: string }>, label: string }[] = [
     { id: 'home', icon: <Home />, label: 'Home' },
     { id: 'quran', icon: <BookOpen />, label: 'Quran' },
     { id: 'learning', icon: <Mic />, label: 'Learn' },
     { id: 'duas', icon: <PenTool />, label: 'Duas' },
     { id: 'prayer', icon: <Clock />, label: 'Pray' },
+    { id: 'hadith', icon: <BookText />, label: 'Hadith' },
     { id: 'settings', icon: <Settings />, label: 'Sets' },
   ];
 
@@ -27,7 +28,7 @@ export function Navigation({ active, onNavigate }: { active: NavItem, onNavigate
             }`}
           >
             <div className={`p-2 rounded-xl transition-all ${active === item.id ? 'bg-primary/10 scale-110' : ''}`}>
-              {React.cloneElement(item.icon as React.ReactElement, { className: 'h-5 w-5' })}
+              {React.cloneElement(item.icon, { className: 'h-5 w-5' })}
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest">{item.label}</span>
           </button>

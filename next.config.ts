@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  env: {
+    HF_API_TOKEN: process.env.HF_API_TOKEN,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+  },
   images: {
     remotePatterns: [
       {
