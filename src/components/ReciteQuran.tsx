@@ -30,6 +30,7 @@ export function ReciteQuran() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [showTranslit, setShowTranslit] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -84,6 +85,7 @@ export function ReciteQuran() {
     // Combines all ayahs into continuous text
     // Replace traditional string mapping with React fragments
     const fullUrduText = urdu?.ayahs?.map((a: any) => `${a.text} (${a.numberInSurah})`).join(' ') || 'Translation not available.';
+    const fullTranslitText = translit?.ayahs?.map((a: any) => `${a.text} (${a.numberInSurah})`).join(' ') || 'Roman translation not available.';
 
     return (
       <div className="flex flex-col h-full bg-background animate-in fade-in slide-in-from-right duration-300">
@@ -123,6 +125,9 @@ export function ReciteQuran() {
             </Button>
 
             <div className="flex items-center gap-2 bg-background/50 px-4 py-2 rounded-full backdrop-blur-sm border border-border/50">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Roman</span>
+              <Switch checked={showTranslit} onCheckedChange={setShowTranslit} />
+              <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
               <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Translate</span>
               <Switch checked={showTranslation} onCheckedChange={setShowTranslation} />
             </div>
@@ -146,6 +151,22 @@ export function ReciteQuran() {
                 ))}
               </div>
             </div>
+
+            {/* Roman Transliteration Continuous Text */}
+            {showTranslit && (
+              <div className="glass-card border border-primary/20 rounded-[1.5rem] p-6 md:p-8 animate-in zoom-in-95 duration-200">
+                <h3 className="text-xs uppercase tracking-widest font-bold text-primary mb-4 flex items-center gap-2 border-b border-white/5 pb-3">
+                  <BookOpen className="h-4 w-4" />
+                  Roman Translation
+                </h3>
+                <div
+                  className="text-lg md:text-xl text-foreground/90 font-medium leading-loose text-justify text-shadow-sm"
+                  dir="ltr"
+                >
+                  {fullTranslitText}
+                </div>
+              </div>
+            )}
 
             {/* Translation Continuous Text */}
             {showTranslation && (

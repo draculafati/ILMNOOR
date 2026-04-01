@@ -3,7 +3,7 @@
 import React from 'react';
 import { Home, BookOpen, Mic, PenTool, Clock, Settings, BookText } from 'lucide-react';
 
-export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'hadith' | 'settings';
+export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'hadith' | 'settings' | 'qaida';
 
 export function Navigation({ active, onNavigate }: { active: NavItem, onNavigate: (nav: NavItem) => void }) {
   const items: { id: NavItem, icon: React.ReactElement<{ className?: string }>, label: string }[] = [

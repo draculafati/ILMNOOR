@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { BookOpen, Mic, PenTool, Calendar, Bell, ChevronRight, Moon, Sun, Clock, Bookmark, Activity, CheckCircle2 } from 'lucide-react';
+import { BookOpen, Mic, PenTool, Calendar, Bell, ChevronRight, Moon, Sun, Clock, Bookmark, Activity, CheckCircle2, Type } from 'lucide-react';
 import { useLocalStore } from '@/lib/store';
 import { fetchPrayerTimes, fetchHijriDate, fetchSurahs } from '@/lib/api';
 import { Progress } from '@/components/ui/progress';
@@ -174,7 +174,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (section: string) => voi
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
         <NavCard icon={<BookOpen />} title="Surah" desc="Recite" onClick={() => onNavigate('quran')} isPrimary />
-        <NavCard icon={<Bookmark />} title="Para" desc="Juz Index" onClick={() => onNavigate('quran')} isPrimary />
+        <NavCard icon={<Type />} title="Qaida" desc="Alphabet" onClick={() => onNavigate('qaida')} isPrimary />
         <NavCard icon={<Mic />} title="Learn" desc="Tajweed" onClick={() => onNavigate('learning')} isPrimary={false} />
         <NavCard icon={<PenTool />} title="Duas" desc="Notepad" onClick={() => onNavigate('duas')} isPrimary={false} />
       </div>
