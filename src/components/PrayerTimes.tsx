@@ -1,15 +1,61 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { fetchPrayerTimes } from '@/lib/api';
 import { useLocalStore } from '@/lib/store';
-import { usePrayerNotifications } from '@/hooks/use-prayer-notifications';
 import { Card, CardContent } from '@/components/ui/card';
-import { Bell, BellOff, MapPin, Search, Loader2, Info, BellRing } from 'lucide-react';
+import { Bell, BellOff, MapPin, Search, Loader2, BellRing } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 
+// ── Prayer names → alarm keys ──────────────────────────────────────────────────
+const PRAYER_ALARM_KEYS = {
+  Fajr:    'fajr',
+  Dhuhr:   'dhuhr',
+  Asr:     'asr',
+  Maghrib: 'maghrib',
+  Isha:    'isha',
+} as const;
+
+const PRAYER_EMOJIS: Record<string, string> = {
+  Fajr:    '🌙',
+  Dhuhr:   '☀️',
+  Asr:     '🌤️',
+  Maghrib: '🌅',
+  Isha:    '🌙',
+};
+
+// ── Convert "HH:MM" to today's Date ───────────────────────────────────────────
+function todayAt(hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+// ── Request permission helper ──────────────────────────────────────────────────
+async function requestPermission(): Promise<boolean> {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+// ── Fire a notification ────────────────────────────────────────────────────────
+async function fireNotification(prayer: string) {
+  const ok = await requestPermission();
+  if (!ok) return;
+  new Notification(`${PRAYER_EMOJIS[prayer]} ${prayer} Prayer Time`, {
+    body: `It's time for ${prayer} prayer. May Allah accept your prayers. آمین`,
+    icon: '/icons/icon-192x192.png',
+    tag: `prayer-${prayer}`,
+    requireInteraction: true,
+  });
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 export function PrayerTimes() {
   const { settings, updateSettings, toggleAlarm } = useLocalStore();
   const [prayerData, setPrayerData] = useState<any>(null);
@@ -18,8 +64,11 @@ export function PrayerTimes() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
-  usePrayerNotifications(prayerData?.timings ?? null, settings.alarms);
+  // Track which prayers already notified today
+  const notifiedToday = useRef<Set<string>>(new Set());
+  const notifiedDate  = useRef<string>('');
 
+  // ── Load prayer times ────────────────────────────────────────────────────────
   const loadTimes = (lat: number, lng: number) => {
     setLoading(true);
     fetchPrayerTimes(lat, lng).then(data => {
@@ -43,44 +92,76 @@ export function PrayerTimes() {
     }
   }, []);
 
+  // ── Clock ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // ── Notification permission state ────────────────────────────────────────────
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission);
     }
   }, []);
 
-  const handleRequestNotifPermission = async () => {
-    if (!('Notification' in window)) return;
-    const result = await Notification.requestPermission();
-    setNotifPermission(result);
-  };
+  // ── Alarm checker — runs every 30s ───────────────────────────────────────────
+  useEffect(() => {
+    if (!prayerData) return;
 
-  const handleManualSearch = async () => {
-    if (!manualCity) return;
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(manualCity)}`
-      );
-      const data = await res.json();
-      if (data && data[0]) {
-        const { lat, lon } = data[0];
-        updateSettings({ location: { lat: parseFloat(lat), lng: parseFloat(lon), city: manualCity } });
-        loadTimes(parseFloat(lat), parseFloat(lon));
+    const check = () => {
+      const now   = new Date();
+      const today = now.toDateString();
+
+      // Reset at midnight
+      if (notifiedDate.current !== today) {
+        notifiedToday.current = new Set();
+        notifiedDate.current  = today;
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+
+      for (const [prayer, alarmKey] of Object.entries(PRAYER_ALARM_KEYS)) {
+        const rawTime = prayerData?.timings?.[prayer];
+        if (!rawTime) continue;
+
+        // Only fire if alarm toggle is ON
+        if (!settings.alarms[alarmKey as keyof typeof settings.alarms]) continue;
+
+        const prayerTime = todayAt(rawTime);
+        const diffMs     = prayerTime.getTime() - now.getTime();
+        const diffMins   = diffMs / 60_000;
+
+        // Fire when within 0–2 minutes of prayer time
+        if (diffMins >= 0 && diffMins <= 2 && !notifiedToday.current.has(prayer)) {
+          notifiedToday.current.add(prayer);
+          fireNotification(prayer);
+        }
+      }
+    };
+
+    check(); // run immediately
+    const interval = setInterval(check, 30_000);
+    return () => clearInterval(interval);
+  }, [prayerData, settings.alarms]);
+
+  // ── Handle toggle — also request permission on first enable ─────────────────
+  const handleToggle = async (key: keyof typeof settings.alarms) => {
+    // If turning ON, request permission first
+    const currentlyOff = !settings.alarms[key];
+    if (currentlyOff) {
+      const granted = await requestPermission();
+      setNotifPermission(Notification.permission);
+      if (!granted) return; // don't toggle if permission denied
     }
+    toggleAlarm(key);
   };
 
+  const handleRequestPermission = async () => {
+    await requestPermission();
+    setNotifPermission(Notification.permission);
+  };
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
   const get12Hour = (time24: string) => {
     const [h, m] = time24.split(':');
     let hr = parseInt(h);
@@ -93,11 +174,11 @@ export function PrayerTimes() {
     if (!prayerData || !currentTime) return null;
     const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
     const prayers = [
-      { name: 'Fajr', time: prayerData.timings.Fajr },
-      { name: 'Dhuhr', time: prayerData.timings.Dhuhr },
-      { name: 'Asr', time: prayerData.timings.Asr },
+      { name: 'Fajr',    time: prayerData.timings.Fajr },
+      { name: 'Dhuhr',   time: prayerData.timings.Dhuhr },
+      { name: 'Asr',     time: prayerData.timings.Asr },
       { name: 'Maghrib', time: prayerData.timings.Maghrib },
-      { name: 'Isha', time: prayerData.timings.Isha },
+      { name: 'Isha',    time: prayerData.timings.Isha },
     ];
     for (const p of prayers) {
       const [h, m] = p.time.split(':').map(Number);
@@ -111,6 +192,8 @@ export function PrayerTimes() {
   return (
     <div className="p-3 sm:p-4 max-w-4xl mx-auto pb-24 animate-in fade-in duration-500">
       <header className="flex flex-col gap-3 py-3">
+
+        {/* Title + Clock */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-col gap-0.5 min-w-0">
             <h2 className="text-2xl sm:text-3xl font-headline font-bold text-primary leading-tight">Prayer Times</h2>
@@ -129,18 +212,20 @@ export function PrayerTimes() {
           )}
         </div>
 
+        {/* Notification permission banner — only show if not granted */}
         {notifPermission !== 'granted' && (
           <button
-            onClick={handleRequestNotifPermission}
+            onClick={handleRequestPermission}
             className="flex items-center gap-2 w-full p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-semibold hover:bg-primary/20 transition-all text-left"
           >
             <BellRing className="h-4 w-4 shrink-0 animate-bounce" />
             {notifPermission === 'denied'
-              ? 'Notifications blocked — enable in browser settings'
+              ? '⚠️ Notifications blocked — enable in browser settings'
               : 'Tap to enable prayer alarm notifications 🔔'}
           </button>
         )}
 
+        {/* City search */}
         <div className="flex gap-2">
           <Input
             placeholder="Enter city or country…"
@@ -161,69 +246,84 @@ export function PrayerTimes() {
           <p className="text-muted-foreground text-sm">Updating times…</p>
         </div>
       ) : prayerData ? (
-        <div className="flex flex-col gap-3 mt-1">
-          <section className="grid grid-cols-2 gap-3">
-            <SpecialTimeCard label="Sehri (Fajr)" time={get12Hour(prayerData.timings.Fajr)} active={settings.alarms.sehri} onToggle={() => toggleAlarm('sehri')} isNext={nextPrayerName === 'Fajr'} />
-            <SpecialTimeCard label="Iftar (Maghrib)" time={get12Hour(prayerData.timings.Maghrib)} active={settings.alarms.iftar} onToggle={() => toggleAlarm('iftar')} isNext={nextPrayerName === 'Maghrib'} />
-          </section>
-
-          <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mt-2">Full Schedule</h3>
-          <div className="flex flex-col gap-2">
-            <PrayerRow name="Fajr"    time={get12Hour(prayerData.timings.Fajr)}    active={settings.alarms.fajr}    onToggle={() => toggleAlarm('fajr')}    isNext={nextPrayerName === 'Fajr'} />
-            <PrayerRow name="Dhuhr"   time={get12Hour(prayerData.timings.Dhuhr)}   active={settings.alarms.dhuhr}   onToggle={() => toggleAlarm('dhuhr')}   isNext={nextPrayerName === 'Dhuhr'} />
-            <PrayerRow name="Asr"     time={get12Hour(prayerData.timings.Asr)}     active={settings.alarms.asr}     onToggle={() => toggleAlarm('asr')}     isNext={nextPrayerName === 'Asr'} />
-            <PrayerRow name="Maghrib" time={get12Hour(prayerData.timings.Maghrib)} active={settings.alarms.maghrib} onToggle={() => toggleAlarm('maghrib')} isNext={nextPrayerName === 'Maghrib'} />
-            <PrayerRow name="Isha"    time={get12Hour(prayerData.timings.Isha)}    active={settings.alarms.isha}    onToggle={() => toggleAlarm('isha')}    isNext={nextPrayerName === 'Isha'} />
-          </div>
-
-          <div className="mt-4 p-3 rounded-xl bg-primary/10 flex gap-3 items-start border border-primary/20">
-            <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Alarms fire as browser notifications ~1 min before each enabled prayer. Install as a PWA for best results.
-            </p>
-          </div>
+        <div className="flex flex-col gap-2 mt-1">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Prayer Schedule</h3>
+          {[
+            { name: 'Fajr',    alarmKey: 'fajr'    as const, timing: prayerData.timings.Fajr },
+            { name: 'Dhuhr',   alarmKey: 'dhuhr'   as const, timing: prayerData.timings.Dhuhr },
+            { name: 'Asr',     alarmKey: 'asr'      as const, timing: prayerData.timings.Asr },
+            { name: 'Maghrib', alarmKey: 'maghrib' as const, timing: prayerData.timings.Maghrib },
+            { name: 'Isha',    alarmKey: 'isha'    as const, timing: prayerData.timings.Isha },
+          ].map(p => (
+            <PrayerRow
+              key={p.name}
+              name={p.name}
+              emoji={PRAYER_EMOJIS[p.name]}
+              time={get12Hour(p.timing)}
+              active={settings.alarms[p.alarmKey]}
+              onToggle={() => handleToggle(p.alarmKey)}
+              isNext={nextPrayerName === p.name}
+            />
+          ))}
         </div>
       ) : null}
     </div>
   );
+
+  async function handleManualSearch() {
+    if (!manualCity) return;
+    setLoading(true);
+    try {
+      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(manualCity)}`);
+      const data = await res.json();
+      if (data && data[0]) {
+        const { lat, lon } = data[0];
+        updateSettings({ location: { lat: parseFloat(lat), lng: parseFloat(lon), city: manualCity } });
+        loadTimes(parseFloat(lat), parseFloat(lon));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
 }
 
-function SpecialTimeCard({ label, time, active, isNext, onToggle }: { label: string; time: string; active: boolean; isNext?: boolean; onToggle: () => void }) {
+// ── Prayer Row ─────────────────────────────────────────────────────────────────
+function PrayerRow({
+  name, emoji, time, active, isNext, onToggle,
+}: {
+  name: string; emoji: string; time: string; active: boolean; isNext?: boolean; onToggle: () => void;
+}) {
   return (
-    <Card className={`relative transition-all overflow-hidden ${isNext ? 'bg-primary/20 border-primary shadow-md scale-[1.01]' : 'bg-primary/15 border-primary/30'}`}>
-      {isNext && <div className="absolute top-0 left-0 w-full h-1 bg-primary animate-pulse" />}
-      <CardContent className="p-3 sm:p-5 flex flex-col items-center justify-center text-center gap-1">
-        {isNext && (
-          <div className="absolute top-2 right-2 flex items-center gap-1">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
-            </span>
-            <span className="text-[9px] font-bold uppercase text-primary tracking-wider">Next</span>
-          </div>
-        )}
-        <div className={`text-[10px] uppercase font-bold tracking-widest leading-tight ${isNext ? 'text-primary' : 'text-primary/70'}`}>{label}</div>
-        <div className={`text-lg sm:text-3xl font-headline font-bold tabular-nums ${isNext ? 'text-primary' : 'text-foreground'}`}>{time}</div>
-        <div className="mt-2 flex items-center gap-2">
-          {active ? <Bell className="h-3.5 w-3.5 text-primary" /> : <BellOff className="h-3.5 w-3.5 text-muted-foreground" />}
-          <Switch checked={active} onCheckedChange={onToggle} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function PrayerRow({ name, time, active, isNext, onToggle }: { name: string; time: string; active: boolean; isNext?: boolean; onToggle: () => void }) {
-  return (
-    <Card className={`transition-all ${isNext ? 'bg-primary/10 border-primary shadow-[0_0_12px_rgba(14,165,233,0.25)] scale-[1.01] z-10' : 'bg-primary/5 border-primary/10'}`}>
+    <Card className={`transition-all ${
+      isNext
+        ? 'bg-primary/10 border-primary shadow-[0_0_14px_rgba(14,165,233,0.2)] scale-[1.01] z-10'
+        : 'bg-primary/5 border-primary/10'
+    }`}>
       <CardContent className="p-3 sm:p-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className={`font-bold text-base sm:text-lg truncate ${isNext ? 'text-primary' : 'text-foreground/90'}`}>{name}</div>
-          {isNext && <span className="text-[9px] uppercase tracking-widest bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full animate-pulse shrink-0">Next</span>}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-xl shrink-0">{emoji}</span>
+          <div className="min-w-0">
+            <div className={`font-bold text-base sm:text-lg ${isNext ? 'text-primary' : 'text-foreground/90'}`}>
+              {name}
+            </div>
+            {isNext && (
+              <span className="text-[9px] uppercase tracking-widest text-primary font-bold">● Next Prayer</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <div className={`font-mono text-sm sm:text-base tabular-nums ${isNext ? 'text-primary font-bold' : 'text-foreground/80'}`}>{time}</div>
-          <Switch checked={active} onCheckedChange={onToggle} />
+          <div className={`font-mono text-sm sm:text-base tabular-nums ${isNext ? 'text-primary font-bold' : 'text-foreground/80'}`}>
+            {time}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {active
+              ? <Bell className="h-3.5 w-3.5 text-primary" />
+              : <BellOff className="h-3.5 w-3.5 text-muted-foreground" />
+            }
+            <Switch checked={active} onCheckedChange={onToggle} />
+          </div>
         </div>
       </CardContent>
     </Card>
