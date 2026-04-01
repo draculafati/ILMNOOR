@@ -17,18 +17,9 @@ export default function Home() {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'default') Notification.requestPermission();
     }
-  }, []);
-
-  useEffect(() => {
     const theme = localStorage.getItem('ilmnoor_theme');
     if (theme === 'dark') document.documentElement.classList.add('dark');
   }, []);
-
-  const toggleNightMode = () => {
-    document.documentElement.classList.toggle('dark');
-    const isDark = document.documentElement.classList.contains('dark');
-    localStorage.setItem('ilmnoor_theme', isDark ? 'dark' : 'light');
-  };
 
   const renderSection = () => {
     switch (activeSection) {
@@ -45,14 +36,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background pb-16 transition-colors duration-300">
-      <div className="absolute top-3 right-3 z-50">
-        <button
-          onClick={toggleNightMode}
-          className="bg-primary/10 text-primary hover:bg-primary/20 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest shadow-sm border border-primary/20 backdrop-blur-md transition-all"
-        >
-          Night Mode
-        </button>
-      </div>
       {renderSection()}
       <Navigation active={activeSection} onNavigate={setActiveSection} />
     </div>
