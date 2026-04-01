@@ -7,10 +7,8 @@ import { QuranLearning } from '@/components/QuranLearning';
 import { DuaNotepad } from '@/components/DuaNotepad';
 import { PrayerTimes } from '@/components/PrayerTimes';
 import HadithCollection from '@/components/HadithCollection';
-import { Settings } from '@/components/Settings';
 import { Navigation, NavItem } from '@/components/Navigation';
 import { NooraniQaida } from '@/components/NooraniQaida';
-import { IslamicAudio } from '@/components/IslamicAudio';
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<NavItem>('home');
@@ -40,8 +38,6 @@ export default function Home() {
       case 'duas':     return <DuaNotepad />;
       case 'prayer':   return <PrayerTimes />;
       case 'hadith':   return <HadithCollection />;
-      case 'audio':    return <IslamicAudio />;
-      case 'settings': return <Settings />;
       case 'qaida':    return <NooraniQaida />;
       default:         return <Dashboard onNavigate={(s) => setActiveSection(s as NavItem)} />;
     }
