@@ -9,6 +9,7 @@ import { PrayerTimes } from '@/components/PrayerTimes';
 import HadithCollection from '@/components/HadithCollection';
 import { Navigation, NavItem } from '@/components/Navigation';
 import { NooraniQaida } from '@/components/NooraniQaida';
+import { Scholars } from '@/components/Scholars';
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<NavItem>('home');
@@ -29,6 +30,7 @@ export default function Home() {
       case 'duas':     return <DuaNotepad />;
       case 'prayer':   return <PrayerTimes />;
       case 'hadith':   return <HadithCollection />;
+      case 'scholars': return <Scholars />;
       case 'qaida':    return <NooraniQaida />;
       default:         return <Dashboard onNavigate={(s) => setActiveSection(s as NavItem)} />;
     }
