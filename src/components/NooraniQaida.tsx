@@ -38,7 +38,7 @@ const ALPHABET = [
   { id:27, iso:'ه', ini:'هـ', med:'ـهـ',fin:'ـه', name:'Haa',   sound:'h',   makhraj:'Chest / lungs' },
   { id:28, iso:'ء', ini:'ء',  med:'ء',  fin:'ء',  name:"Hamza", sound:"'",   makhraj:'Throat (glottal stop)' },
   { id:29, iso:'ي', ini:'يـ', med:'ـيـ',fin:'ـي', name:'Yaa',   sound:'y/ee',makhraj:'Middle of tongue + palate' },
-
+ 
 ];
 
 // Correct Noorani Qaida grouping — as in the actual book
@@ -172,7 +172,7 @@ export function NooraniQaida() {
                   </button>
                   {(expandedGroup === gi || expandedGroup === null) && (
                     <div className="px-4 pb-4">
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                      <div dir="rtl" className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
                         {letters.map(letter => (
                           <LetterCard key={letter.id} letter={letter} showForms={showForms} />
                         ))}
