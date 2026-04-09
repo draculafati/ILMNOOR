@@ -1,17 +1,18 @@
 "use client";
 
 import React from 'react';
-import { Home, BookOpen, PenTool, Clock, BookText } from 'lucide-react';
+import { Home, BookOpen, PenTool, Clock, BookText, GraduationCap } from 'lucide-react';
 
-export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'hadith' | 'settings' | 'qaida';
+export type NavItem = 'home' | 'quran' | 'learning' | 'duas' | 'prayer' | 'hadith' | 'scholars' | 'settings' | 'qaida';
 
 export function Navigation({ active, onNavigate }: { active: NavItem; onNavigate: (nav: NavItem) => void }) {
   const items: { id: NavItem; icon: React.ReactElement<{ className?: string }>; label: string }[] = [
-    { id: 'home',   icon: <Home />,     label: 'Home' },
-    { id: 'quran',  icon: <BookOpen />, label: 'Quran' },
-    { id: 'duas',   icon: <PenTool />,  label: 'Duas' },
-    { id: 'prayer', icon: <Clock />,    label: 'Pray' },
-    { id: 'hadith', icon: <BookText />, label: 'Hadith' },
+    { id: 'home',    icon: <Home />,           label: 'Home' },
+    { id: 'quran',   icon: <BookOpen />,        label: 'Quran' },
+    { id: 'duas',    icon: <PenTool />,         label: 'Duas' },
+    { id: 'prayer',  icon: <Clock />,           label: 'Pray' },
+    { id: 'scholars',icon: <GraduationCap />,   label: 'Scholars' },
+    { id: 'hadith',  icon: <BookText />,        label: 'Hadith' },
   ];
 
   return (
