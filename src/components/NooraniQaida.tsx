@@ -38,6 +38,7 @@ const ALPHABET = [
   { id:27, iso:'ه', ini:'هـ', med:'ـهـ',fin:'ـه', name:'Haa',   sound:'h',   makhraj:'Chest / lungs' },
   { id:28, iso:'ء', ini:'ء',  med:'ء',  fin:'ء',  name:"Hamza", sound:"'",   makhraj:'Throat (glottal stop)' },
   { id:29, iso:'ي', ini:'يـ', med:'ـيـ',fin:'ـي', name:'Yaa',   sound:'y/ee',makhraj:'Middle of tongue + palate' },
+
 ];
 
 // Correct Noorani Qaida grouping — as in the actual book
@@ -48,7 +49,6 @@ const GROUPS = [
   { title: 'Taa to Ghayn', subtitle:'ط — غ', range:[15,18], color:'from-amber-500/20 to-amber-500/5',  border:'border-amber-500/30' },
   { title: 'Faa to Laam',   subtitle:'ف — ل', range:[19,22], color:'from-rose-500/20 to-rose-500/5',   border:'border-rose-500/30' },
   { title: 'Meem to Yaa',   subtitle:'م — ي', range:[23,27], color:'from-cyan-500/20 to-cyan-500/5',   border:'border-cyan-500/30' },
-  { title: 'Hamza & Laam-Alif', subtitle:'ء — لا', range:[28,29], color:'from-orange-500/20 to-orange-500/5', border:'border-orange-500/30' },
 ];
 
 const HARAKAT = [
@@ -172,7 +172,7 @@ export function NooraniQaida() {
                   </button>
                   {(expandedGroup === gi || expandedGroup === null) && (
                     <div className="px-4 pb-4">
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2" dir="rtl">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
                         {letters.map(letter => (
                           <LetterCard key={letter.id} letter={letter} showForms={showForms} />
                         ))}
