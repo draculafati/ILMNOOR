@@ -8,10 +8,10 @@ export async function fetchSurahs() {
 }
 
 export async function fetchSurahDetail(number: number) {
-  // Editions: quran-uthmani (Arabic), en.transliteration (English), ur.jalandhry (Urdu)
-  const res = await fetch(`${QURAN_API_BASE}/surah/${number}/editions/quran-uthmani,en.transliteration,ur.jalandhry`);
+  // Editions: quran-uthmani (Arabic), en.transliteration (Roman), ur.jalandhry (Urdu), en.sahih (English)
+  const res = await fetch(`${QURAN_API_BASE}/surah/${number}/editions/quran-uthmani,en.transliteration,ur.jalandhry,en.sahih`);
   const data = await res.json();
-  return data.data; // Array of editions
+  return data.data; // Array of 4 editions: [0]=Arabic [1]=Roman [2]=Urdu [3]=English
 }
 
 export async function fetchPrayerTimes(lat: number, lng: number) {
