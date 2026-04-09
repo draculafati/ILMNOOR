@@ -25,6 +25,7 @@ export function ReciteQuran() {
   const [mounted, setMounted]       = useState(false);
   const [isPlaying, setIsPlaying]   = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [showEnglish, setShowEnglish] = useState(false);
   const [showTranslit, setShowTranslit]       = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -58,6 +59,7 @@ export function ReciteQuran() {
   // ── Surah detail view ────────────────────────────────────────────────────────
   if (selectedSurah && surahData) {
     const arabic   = surahData[0];
+    const english  = surahData[3];
     const translit = surahData[1];
     const urdu     = surahData[2];
 
@@ -100,12 +102,15 @@ export function ReciteQuran() {
             >
               {isPlaying ? <><Pause className="h-4 w-4" /> Pause</> : <><Play className="h-4 w-4" /> Play</>}
             </Button>
-            <div className="flex items-center gap-2 bg-background/50 px-4 py-2 rounded-full backdrop-blur-sm border border-border/50">
+            <div className="flex items-center gap-1.5 bg-background/50 px-3 py-2 rounded-full backdrop-blur-sm border border-border/50 flex-wrap justify-end">
               <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Roman</span>
               <Switch checked={showTranslit} onCheckedChange={setShowTranslit} />
-              <div className="w-[1px] h-4 bg-border/50 mx-1" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Translate</span>
+              <div className="w-[1px] h-4 bg-border/50 mx-0.5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-primary">اردو</span>
               <Switch checked={showTranslation} onCheckedChange={setShowTranslation} />
+              <div className="w-[1px] h-4 bg-border/50 mx-0.5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-primary">EN</span>
+              <Switch checked={showEnglish} onCheckedChange={setShowEnglish} />
             </div>
           </div>
         </header>
@@ -120,6 +125,7 @@ export function ReciteQuran() {
                   const bmed = mounted && isAyahBookmarked(selectedSurah, a.numberInSurah);
                   const translitAyah = translit?.ayahs?.[idx];
                   const urduAyah     = urdu?.ayahs?.[idx];
+                  const englishAyah  = english?.ayahs?.[idx];
                   return (
                     <div key={a.number} className={`group relative rounded-2xl p-4 transition-all ${bmed ? 'bg-primary/10 border border-primary/30' : 'hover:bg-primary/5'}`}>
                       {/* Bookmark toggle button */}
@@ -157,7 +163,12 @@ export function ReciteQuran() {
 
                       {/* Urdu translation per ayah */}
                       {showTranslation && urduAyah && (
-                        <p className="text-base text-foreground/90 leading-loose mt-2 text-right" dir="rtl">{urduAyah.text}</p>
+                        <p className="text-base text-foreground/90 leading-loose mt-2 text-right font-arabic" dir="rtl">{urduAyah.text}</p>
+                      )}
+
+                      {/* English translation per ayah */}
+                      {showEnglish && englishAyah && (
+                        <p className="text-sm text-foreground/80 leading-relaxed mt-2 border-l-2 border-primary/30 pl-3 italic">{englishAyah.text}</p>
                       )}
                     </div>
                   );
