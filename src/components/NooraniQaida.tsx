@@ -36,10 +36,8 @@ const ALPHABET = [
   { id:25, iso:'ن', ini:'نـ', med:'ـنـ',fin:'ـن', name:'Noon',  sound:'n',   makhraj:'Tongue tip + gum (nasal)' },
   { id:26, iso:'و', ini:'و',  med:'ـو', fin:'ـو', name:'Waaw',  sound:'w/oo',makhraj:'Lips (rounded)' },
   { id:27, iso:'ه', ini:'هـ', med:'ـهـ',fin:'ـه', name:'Haa',   sound:'h',   makhraj:'Chest / lungs' },
-  { id:28, iso:'ي', ini:'يـ', med:'ـيـ',fin:'ـي', name:'Yaa',   sound:'y/ee',makhraj:'Middle of tongue + palate' },
-  // Extra letters found in actual Noorani Qaida (hamza variants + laam-alif)
-  { id:29, iso:'ء', ini:'ء',  med:'ء',  fin:'ء',  name:"Hamza", sound:"'",   makhraj:'Throat (glottal stop)' },
-  { id:30, iso:'لا',ini:'لا', med:'لا', fin:'لا', name:'Laam-Alif', sound:'laa', makhraj:'Laam + Alif ligature' },
+  { id:28, iso:'ء', ini:'ء',  med:'ء',  fin:'ء',  name:"Hamza", sound:"'",   makhraj:'Throat (glottal stop)' },
+  { id:29, iso:'ي', ini:'يـ', med:'ـيـ',fin:'ـي', name:'Yaa',   sound:'y/ee',makhraj:'Middle of tongue + palate' },
 ];
 
 // Correct Noorani Qaida grouping — as in the actual book
