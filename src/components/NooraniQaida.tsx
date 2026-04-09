@@ -48,7 +48,7 @@ const GROUPS = [
   { title: 'Seen to Daad',  subtitle:'س — ض', range:[11,14], color:'from-purple-500/20 to-purple-500/5', border:'border-purple-500/30' },
   { title: 'Taa to Ghayn', subtitle:'ط — غ', range:[15,18], color:'from-amber-500/20 to-amber-500/5',  border:'border-amber-500/30' },
   { title: 'Faa to Laam',   subtitle:'ف — ل', range:[19,22], color:'from-rose-500/20 to-rose-500/5',   border:'border-rose-500/30' },
-  { title: 'Meem to Yaa',   subtitle:'م — ي', range:[23,27], color:'from-cyan-500/20 to-cyan-500/5',   border:'border-cyan-500/30' },
+  { title: 'Meem to Yaa',   subtitle:'م — ي', range:[23,29], color:'from-cyan-500/20 to-cyan-500/5',   border:'border-cyan-500/30' },
 ];
 
 const HARAKAT = [
